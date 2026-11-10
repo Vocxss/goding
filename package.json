@@ -1,6 +1,7 @@
 {
   "name": "g",
   "version": "0.1.0",
+  "type": "module",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -10,19 +11,29 @@
     "format": "biome format --write"
   },
   "dependencies": {
+    "@base-ui/react": "^1.9.0",
+    "@blobatar/react": "^2.7.0",
+    "@tanstack/react-query": "^5.107.1",
+    "bcrypt": "^6.0.0",
+    "blobatar": "^2.7.0",
+    "class-variance-authority": "^0.7.1",
+    "cn": "^0.5.2",
+    "lucide-react": "^1.70.0",
     "next": "16.4.5",
+    "next-auth": "^4.24.15",
+    "pg": "^8.23.1",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "react-hook-form": "^7.91.0",
+    "shadcn": "^4.23.0",
+    "tw-animate-css": "^1.4.0",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.2",
     "@tailwindcss/turbopack": "^4",
-    "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
     "babel-plugin-react-compiler": "1.0.0",
-    "tailwindcss": "^4",
-    "typescript": "^5"
+    "tailwindcss": "^4"
   },
   "packageManager": "bun@1.3.6",
   "ignoreScripts": [
