@@ -12,69 +12,84 @@ import {
 import {
   Field,
   FieldDescription,
-  FieldError,
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { loginSchema } from "@/lib/validations/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { Eye, EyeClosed } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import * as z from "zod";
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "./ui/input-group";
 import { Spinner } from "./ui/spinner";
 import { toast } from "./ui/toast";
-export function LoginForm({ className, ...props }) {
+import { POST } from "@/app/api/[...nextauth]/route";
+import { FieldError } from "@base-ui/react";
+export function LoginForm({ ...props }) {
   const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const form = useForm<z.infer<typeof loginSchema>>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
       email: "",
       password: "",
-    },
-    mode: "onChange",
+    }
   });
 
-  const onSubmit = async (data: z.infer<typeof loginSchema>) => {
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
     setIsLoading(true);
 
-    const response = await fetch("/api/register", {
-      method: "POST",
-      body: JSON.stringify(data),
-    });
-    const result = await response.json();
-
-    if (!response.ok)
-      toast.add({
-        title: "Login gagal",
-        description: result.errors,
-        type: "error",
+    try {
+      const res = await fetch("/api/register", {
+        method: POST,
+        body: JSON.parse(inputValue),
       });
 
-    setIsLoading(false);
+      if (!res.ok)
+        toast.add({
+          title: "Login gagal",
+          description: res.message,
+          type: "error",
+        });
+
+      setIsLoading(false);
+    } catch (error) {
+      console.error(error);
+      toast.add({
+        title: "Login gagal",
+        description: error.message,
+        type: "error",
+      });
+      setIsLoading(false);
+    }
   };
 
   return (
-    <div className={cn("flex flex-col gap-6", className)} {...props}>
+    <div className={cn("flex flex-col gap-6")} {...props}>
       <Card>
-        <CardHeader className={"flex justify-center items-center"}>
+        <CardHeader className={"flex flex-col justify-center items-center"}>
           <CardTitle>Selamat Datang di Goding!</CardTitle>
           <CardDescription>Buat akun Goding kamu untuk kursus</CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={form.handleSubmit(onSubmit)}>
+          <form onSubmit={handleSubmit}>
             <FieldGroup>
               <Controller
                 name="email"
                 control={form.control}
                 render={({ field, fieldState }) => (
                   <Field>
-                    <FieldLabel htmlFor="email">Nama</FieldLabel>
+                    <FieldLabel htmlFor="email">Email</FieldLabel>
                     <Input
                       {...field}
-                      id="nama"
+                      id="email"
                       type="text"
                       placeholder="gibranxgaming@gmail.com"
                       autoComplete="off"
@@ -86,21 +101,29 @@ export function LoginForm({ className, ...props }) {
                   </Field>
                 )}
               />
-              <Controller
+         <Controller
                 name="password"
                 control={form.control}
                 render={({ field, fieldState }) => (
                   <Field>
-                    <div className="flex items-center">
-                      <FieldLabel htmlFor="password">Password</FieldLabel>
-                      <Link
-                        href="/forgot-password"
-                        className="ml-auto inline-block text-sm underline-offset-4 hover:underline"
-                      >
-                        Lupa password?
-                      </Link>
-                    </div>
-                    <Input {...field} id="password" type="password" required />
+                    <FieldLabel htmlFor="password">Password</FieldLabel>
+                    <InputGroup>
+                      <InputGroupInput
+                        {...field}
+                        id="password"
+                        type={showPassword ? "text" : "password"}
+                        placeholder="••••••••"
+                        required
+                      />
+                      <InputGroupAddon align="inline-end">
+                        <InputGroupButton
+                          title="Show Password"
+                          onClick={() => setShowPassword(!showPassword)}
+                        >
+                          {showPassword ? <Eye /> : <EyeClosed />}
+                        </InputGroupButton>
+                      </InputGroupAddon>
+                    </InputGroup>
                     {fieldState.invalid && (
                       <FieldError errors={[fieldState.error]} />
                     )}

@@ -1,36 +1,22 @@
-"use client";
+import { LoginForm } from "@/components/loginForm";
 
-import { LoginForm } from "@/components/login-form";
 import Image from "next/image";
 
 export default function LoginPage() {
   return (
-    <div className="grid min-h-svh lg:grid-cols-2">
-      <div className="flex flex-col gap-4 p-6 md:p-10">
-        <div className="flex justify-center gap-2 md:justify-start">
-          <a href="#" className="flex items-center gap-2 font-medium">
+    <div className="flex min-h-svh flex-col items-center justify-center gap-6 bg-muted p-6 md:p-10">
+      <div className="flex w-full max-w-sm flex-col gap-6">
+        <div className="flex items-center gap-2 self-center font-bold text-2xl">
             <Image
               src={"/logo.webp"}
               alt="Logo"
-              width={1000}
-              height={1000}
-              className="w-24 h-24 object-cover"
+              width={800}
+              height={800}
+              className="w-12 object-cover"
             />
-            Goding
-          </a>
+          Goding
         </div>
-        <div className="flex flex-1 items-center justify-center">
-          <div className="w-full max-w-xs">
-            <LoginForm />
-          </div>
-        </div>
-      </div>
-      <div className="relative hidden bg-muted lg:block">
-        <img
-          src="/placeholder.svg"
-          alt="Image"
-          className="absolute inset-0 h-full w-full object-cover dark:brightness-[0.2] dark:grayscale"
-        />
+        <LoginForm />
       </div>
     </div>
   );

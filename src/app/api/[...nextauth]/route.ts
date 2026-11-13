@@ -1,6 +1,5 @@
-import { query } from "@/lib/db";
-import { User } from "@/lib/types";
-import { loginSchema } from "@/lib/validations/auth";
+import pool from "@/lib/db";
+import { loginSchema } from "@/lib/schema";
 import bcrypt from "bcrypt";
 import NextAuth from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
@@ -17,33 +16,28 @@ const authOptions = {
         const parsed = loginSchema.safeParse(credential);
         if (!parsed.success) return null;
 
-        const { email, password } = parsed.data;
+        const { username, password } = parsed.data;
 
-        const { rows: existedAccounts } = await query<User>(
-          "SELECT * FROM accounts WHERE email = $1",
-          [email],
-        );
-        if (existedAccounts.length == 0) return null;
+        console.log(username, password);
 
-        const checked = await bcrypt.compare(
-          password,
-          existedAccounts[0].password_hash,
-        );
+        const {rows} = await pool.query('SELECT * FROM accounts WHERE username = $1', [username]);
+        if (rows.length == 0) return null;
+
+        const account = rows[0]
+
+        const checked = await bcrypt.compare(password, existedAccount.password);
         if (!checked) return null;
 
-        const { rows: users } = await query<User>(
-          "SELECT u.id, u.username, u.role, u.avatar_url FROM users u join accounts a on u.id = a.user_id WHERE a.id = $1",
-          [existedAccounts[0].id],
-        );
+        const {rows: users} = await pool.query('SELECT u.id, u.username, u.role, u.avatar_url FROM users u join accounts a on u.id = a.user_id WHERE a.id = $1', [account.user_id]);
         if (users.length == 0) return null;
 
-        const user = users[0];
+        const user = rows[0];
 
         return {
           id: user.id,
-          username: user.username,
-          role: user.role,
-          image: user.avatar_url,
+          name: user.name,
+          role: account.role,
+          image: user.avatarUrl,
         };
       },
     }),
@@ -70,6 +64,6 @@ const authOptions = {
   },
 };
 
-const { handlers } = NextAuth(authOptions);
+const handler = NextAuth(authOptions);
 
-export const { GET, POST } = handlers;
+export { handler as GET, handler as POST };
