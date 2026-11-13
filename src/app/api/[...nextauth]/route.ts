@@ -1,3 +1,4 @@
+import pool from "@/lib/db";
 import { loginSchema } from "@/lib/schema";
 import bcrypt from "bcrypt";
 import NextAuth from "next-auth";
@@ -19,16 +20,18 @@ const authOptions = {
 
         console.log(username, password);
 
-        const account = await db.orm.public.Account.where({ username }).first();
-        if (!account) return null;
+        const {rows} = await pool.query('SELECT * FROM accounts WHERE username = $1', [username]);
+        if (rows.length == 0) return null;
 
-        const checked = await bcrypt.compare(password, account.password);
+        const account = rows[0]
+
+        const checked = await bcrypt.compare(password, existedAccount.password);
         if (!checked) return null;
 
-        const user = await db.orm.public.User.where({
-          accountId: account.id,
-        }).first();
-        if (!user) return null;
+        const {rows: users} = await pool.query('SELECT u.id, u.username, u.role, u.avatar_url FROM users u join accounts a on u.id = a.user_id WHERE a.id = $1', [account.user_id]);
+        if (users.length == 0) return null;
+
+        const user = rows[0];
 
         return {
           id: user.id,
