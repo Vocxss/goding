@@ -1,203 +1,177 @@
-BEGIN;
+-- ============================================================================
+-- 1. ENUM TYPES
+-- ============================================================================
+CREATE TYPE user_role AS ENUM ('admin', 'mentor', 'student');
+CREATE TYPE course_level AS ENUM ('beginner', 'intermediate', 'advanced');
+CREATE TYPE quiz_type AS ENUM ('multiple_choice', 'live_coding');
 
--- Pastikan ekstensi gen_random_uuid tersedia untuk versi PG lama (bawaan sejak PG 13+)
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
-
--- ==========================================
--- 1. CUSTOM ENUM TYPES
--- ==========================================
-CREATE TYPE user_role AS ENUM ('STUDENT', 'MENTOR', 'ADMIN');
-CREATE TYPE access_tier AS ENUM ('FREE', 'PRO');
-CREATE TYPE lesson_type AS ENUM ('QUIZ', 'GUIDED', 'DEBUGGING', 'BLANK_CANVAS');
-CREATE TYPE progress_status AS ENUM ('NOT_STARTED', 'IN_PROGRESS', 'COMPLETED');
-CREATE TYPE brief_category AS ENUM ('BUSINESS_TYPE', 'BUSINESS_RULE', 'COLOR_THEME', 'FEATURE_TWIST');
-CREATE TYPE project_status AS ENUM ('ASSIGNED', 'IN_PROGRESS', 'SUBMITTED', 'REVISION_NEEDED', 'APPROVED');
-CREATE TYPE review_decision AS ENUM ('REVISION_NEEDED', 'APPROVED');
-CREATE TYPE ticket_status AS ENUM ('OPEN', 'IN_REVIEW', 'RESOLVED');
-
--- ==========================================
--- 2. TRIGGER FUNCTION UNTUK UPDATED_AT
--- ==========================================
-CREATE OR REPLACE FUNCTION set_updated_at()
-RETURNS TRIGGER AS $$
-BEGIN
-  NEW.updated_at = NOW();
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
--- ==========================================
--- 3. PENGGUNA, STREAK & AKSES
--- ==========================================
+-- ============================================================================
+-- 2. PENGGUNA & HAK AKSES (ROLE & MENTOR MAPPING)
+-- ============================================================================
 CREATE TABLE users (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name VARCHAR(120) NOT NULL,
-  email VARCHAR(255) NOT NULL UNIQUE,
-  password_hash TEXT, -- Nullable jika login memakai OAuth (Google/GitHub)
-  avatar_url TEXT,
-  role user_role NOT NULL DEFAULT 'STUDENT',
-  headline VARCHAR(160), -- Ditampilkan di Public Portfolio Card atau profil Mentor
-  bio TEXT,
-  is_active BOOLEAN NOT NULL DEFAULT TRUE,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    full_name VARCHAR(150) NOT NULL,
+    username VARCHAR(100) NOT NULL,
+    email VARCHAR(150) UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    role user_role NOT NULL DEFAULT 'student',
+    avatar_url TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE student_stats (
-  user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-  current_streak INT NOT NULL DEFAULT 0 CHECK (current_streak >= 0),
-  longest_streak INT NOT NULL DEFAULT 0 CHECK (longest_streak >= 0),
-  streak_freeze_count INT NOT NULL DEFAULT 1 CHECK (streak_freeze_count >= 0),
-  last_active_date DATE,
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
+-- ============================================================================
+-- 3. LEARNING PATH, MENTOR ASSIGNMENT, & KELAS
+-- ============================================================================
 CREATE TABLE learning_paths (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  slug VARCHAR(100) NOT NULL UNIQUE,
-  title VARCHAR(150) NOT NULL,
-  description TEXT NOT NULL,
-  sort_order INT NOT NULL DEFAULT 0,
-  is_published BOOLEAN NOT NULL DEFAULT FALSE,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    title VARCHAR(150) NOT NULL, -- Contoh: "Dasar Pemrograman", "AI Engineer"
+    slug VARCHAR(150) UNIQUE NOT NULL,
+    description TEXT,
+    thumbnail_url TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE vouchers (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  code VARCHAR(50) NOT NULL UNIQUE,
-  discount_percent INT NOT NULL DEFAULT 100 CHECK (discount_percent BETWEEN 1 AND 100),
-  max_uses INT CHECK (max_uses IS NULL OR max_uses > 0),
-  used_count INT NOT NULL DEFAULT 0 CHECK (used_count >= 0),
-  expires_at TIMESTAMPTZ,
-  is_active BOOLEAN NOT NULL DEFAULT TRUE,
-  created_by UUID REFERENCES users(id) ON DELETE SET NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  CONSTRAINT chk_voucher_usage CHECK (max_uses IS NULL OR used_count <= max_uses)
+-- Tabel relasi untuk membagi mentor berdasarkan learning path yang diampu
+CREATE TABLE mentor_learning_paths (
+    mentor_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    learning_path_id UUID NOT NULL REFERENCES learning_paths(id) ON DELETE CASCADE,
+    assigned_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (mentor_id, learning_path_id)
 );
 
-CREATE TABLE user_access (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  learning_path_id UUID NOT NULL REFERENCES learning_paths(id) ON DELETE CASCADE,
-  tier access_tier NOT NULL DEFAULT 'FREE',
-  voucher_id UUID REFERENCES vouchers(id) ON DELETE SET NULL,
-  payment_reference VARCHAR(120), -- ID transaksi dari payment gateway lokal
-  granted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  expires_at TIMESTAMPTZ, -- NULL berarti akses selamanya untuk jalur tersebut
-  UNIQUE (user_id, learning_path_id)
+CREATE TABLE courses (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    learning_path_id UUID NOT NULL REFERENCES learning_paths(id) ON DELETE CASCADE,
+    created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    title VARCHAR(200) NOT NULL,
+    slug VARCHAR(200) UNIQUE NOT NULL,
+    description TEXT,
+    level course_level NOT NULL DEFAULT 'beginner',
+    is_published BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- ==========================================
--- 4. KURIKULUM, SANDBOX & PROGRES BELAJAR
--- ==========================================
-CREATE TABLE modules (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  learning_path_id UUID NOT NULL REFERENCES learning_paths(id) ON DELETE CASCADE,
-  title VARCHAR(150) NOT NULL,
-  description TEXT,
-  sort_order INT NOT NULL DEFAULT 0,
-  is_published BOOLEAN NOT NULL DEFAULT FALSE,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+-- Pendaftaran pengguna ke kelas (Flow: user wajib enroll untuk akses kelas)
+CREATE TABLE enrollments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    course_id UUID NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+    enrolled_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at TIMESTAMPTZ, -- Terisi otomatis saat progres mencapai 100%
+    UNIQUE (user_id, course_id)
 );
 
-CREATE TABLE lessons (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  module_id UUID NOT NULL REFERENCES modules(id) ON DELETE CASCADE,
-  slug VARCHAR(120) NOT NULL,
-  title VARCHAR(180) NOT NULL,
-  lesson_type lesson_type NOT NULL,
-  is_free BOOLEAN NOT NULL DEFAULT FALSE,
-  sort_order INT NOT NULL DEFAULT 0,
-  content_md TEXT NOT NULL, -- Materi instruksi dalam format Markdown
-  starter_code JSONB NOT NULL DEFAULT '{"html": "", "css": "", "js": ""}'::jsonb, -- Diisi kode rusak jika DEBUGGING, kosong jika BLANK_CANVAS
-  solution_code JSONB, -- Referensi solusi untuk Admin/Mentor
-  test_script TEXT, -- Skrip assertion JS yang dieksekusi di sandboxed iframe
-  quiz_payload JSONB, -- Diisi soal & opsi jika lesson_type = 'QUIZ'
-  hints JSONB NOT NULL DEFAULT '[]'::jsonb, -- Petunjuk bertahap
-  is_published BOOLEAN NOT NULL DEFAULT FALSE,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE (module_id, slug)
+-- ============================================================================
+-- 4. STRUKTUR KURIKULUM: BAB, MATERI (+ PLAYGROUND), & KUIZ (+ HINTS)
+-- ============================================================================
+CREATE TABLE chapters (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    course_id UUID NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+    title VARCHAR(200) NOT NULL,
+    order_index INT NOT NULL, -- Urutan bab di dalam kelas
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE lesson_mentor_notes (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  lesson_id UUID NOT NULL REFERENCES lessons(id) ON DELETE CASCADE,
-  mentor_id UUID REFERENCES users(id) ON DELETE SET NULL,
-  note TEXT NOT NULL, -- Catatan soal ambigu atau bug test case untuk Admin
-  is_resolved BOOLEAN NOT NULL DEFAULT FALSE,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+-- Materi bacaan + dukungan Inline Code Playground ("Coba Sendiri")
+CREATE TABLE materials (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    chapter_id UUID NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,
+    title VARCHAR(200) NOT NULL,
+    content TEXT NOT NULL, -- Format Markdown / HTML
+    
+    -- Konfigurasi Inline Code Playground
+    has_playground BOOLEAN NOT NULL DEFAULT FALSE,
+    playground_language VARCHAR(50), -- Contoh: 'python', 'javascript', 'cpp'
+    playground_starter_code TEXT,    -- Kode awal yang muncul di editor materi
+    
+    order_index INT NOT NULL, -- Urutan item di dalam bab
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE lesson_progress (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  student_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  lesson_id UUID NOT NULL REFERENCES lessons(id) ON DELETE CASCADE,
-  status progress_status NOT NULL DEFAULT 'NOT_STARTED',
-  saved_code JSONB NOT NULL DEFAULT '{"html": "", "css": "", "js": ""}'::jsonb, -- Auto-save kode terakhir siswa
-  attempts_count INT NOT NULL DEFAULT 0 CHECK (attempts_count >= 0),
-  completed_at TIMESTAMPTZ,
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE (student_id, lesson_id)
+CREATE TABLE quizzes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    chapter_id UUID NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,
+    title VARCHAR(200) NOT NULL,
+    description TEXT,
+    quiz_type quiz_type NOT NULL,
+    passing_score INT NOT NULL DEFAULT 70,
+    order_index INT NOT NULL, -- Urutan item di dalam bab
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- ==========================================
--- 6. DYNAMIC PROJECT BRIEF & PORTOFOLIO
--- ==========================================
-CREATE TABLE student_projects (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  student_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  template_id UUID NOT NULL REFERENCES project_templates(id) ON DELETE CASCADE,
-  generated_brief JSONB NOT NULL, -- Kombinasi unik variabel UMKM yang terkunci per siswa
-  submitted_code JSONB NOT NULL DEFAULT '{"html": "", "css": "", "js": ""}'::jsonb,
-  demo_url TEXT,
-  auto_test_passed BOOLEAN NOT NULL DEFAULT FALSE,
-  status project_status NOT NULL DEFAULT 'ASSIGNED',
-  portfolio_slug VARCHAR(140) UNIQUE, -- URL unik Public Portfolio Card
-  is_public BOOLEAN NOT NULL DEFAULT FALSE,
-  submitted_at TIMESTAMPTZ,
-  approved_at TIMESTAMPTZ,
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE (student_id, template_id)
+-- Pertanyaan kuis (mendukung Pilihan Ganda & Live Coding + Progressive Hints)
+CREATE TABLE quiz_questions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    quiz_id UUID NOT NULL REFERENCES quizzes(id) ON DELETE CASCADE,
+    question_text TEXT NOT NULL,
+    points INT NOT NULL DEFAULT 10,
+    order_index INT NOT NULL,
+
+    -- Kolom khusus Pilihan Ganda (diisi jika quiz_type = 'multiple_choice')
+    -- Format JSONB options: [{"id": "a", "text": "..."}, {"id": "b", "text": "..."}]
+    options JSONB,
+    correct_option_id VARCHAR(10),
+
+    -- Kolom khusus Live Coding (diisi jika quiz_type = 'live_coding')
+    programming_language VARCHAR(50),
+    starter_code TEXT,
+    solution_code TEXT,
+    -- Format JSONB test_cases: [{"input": "2 3", "expected_output": "5", "is_hidden": false}]
+    test_cases JSONB,
+    -- FITUR 1: Progressive Hints (Array string petunjuk bertingkat)
+    -- Format JSONB hints: ["Gunakan fungsi input()", "Pastikan tipe data diubah ke integer"]
+    hints JSONB DEFAULT '[]'::jsonb
 );
 
-CREATE TABLE project_reviews (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  project_id UUID NOT NULL REFERENCES student_projects(id) ON DELETE CASCADE,
-  mentor_id UUID REFERENCES users(id) ON DELETE SET NULL,
-  rubric_scores JSONB NOT NULL, -- Misal: {"struktur": 90, "logika": 85, "tata_letak": 88}
-  inline_comments JSONB NOT NULL DEFAULT '[]'::jsonb, -- Komentar per file/baris kode
-  general_feedback TEXT NOT NULL,
-  decision review_decision NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+-- ============================================================================
+-- 5. RIWAYAT PENGERJAAN KUIZ, PROGRES BELAJAR, & SERTIFIKAT
+-- ============================================================================
+CREATE TABLE quiz_submissions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    quiz_id UUID NOT NULL REFERENCES quizzes(id) ON DELETE CASCADE,
+    score INT NOT NULL,
+    is_passed BOOLEAN NOT NULL DEFAULT FALSE,
+    submitted_answers JSONB, -- Menyimpan jawaban pilihan ganda atau kode terakhir user
+    submitted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- ==========================================
--- 7. TRIGGERS OTOMATIS UPDATED_AT
--- ==========================================
-CREATE TRIGGER trg_users_updated_at BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-CREATE TRIGGER trg_student_stats_updated_at BEFORE UPDATE ON student_stats FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-CREATE TRIGGER trg_learning_paths_updated_at BEFORE UPDATE ON learning_paths FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-CREATE TRIGGER trg_modules_updated_at BEFORE UPDATE ON modules FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-CREATE TRIGGER trg_lessons_updated_at BEFORE UPDATE ON lessons FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-CREATE TRIGGER trg_lesson_progress_updated_at BEFORE UPDATE ON lesson_progress FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-CREATE TRIGGER trg_error_translations_updated_at BEFORE UPDATE ON error_translations FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-CREATE TRIGGER trg_project_templates_updated_at BEFORE UPDATE ON project_templates FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-CREATE TRIGGER trg_student_projects_updated_at BEFORE UPDATE ON student_projects FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-CREATE TRIGGER trg_unstuck_tickets_updated_at BEFORE UPDATE ON unstuck_tickets FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+-- FITUR 2: Progress Tracker & Tombol "Lanjutkan Belajar"
+CREATE TABLE user_material_progress (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    material_id UUID NOT NULL REFERENCES materials(id) ON DELETE CASCADE,
+    is_completed BOOLEAN NOT NULL DEFAULT FALSE,
+    last_accessed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), -- Acuan tombol "Lanjutkan Belajar"
+    completed_at TIMESTAMPTZ,
+    UNIQUE (user_id, material_id)
+);
 
--- ==========================================
--- 8. INDEXING UNTUK PERFORMA QUERIES
--- ==========================================
--- Urutan kurikulum
-CREATE INDEX idx_modules_path_order ON modules(learning_path_id, sort_order);
-CREATE INDEX idx_lessons_module_order ON lessons(module_id, sort_order);
+-- FITUR 3: Generator Sertifikat Otomatis & Halaman Verifikasi Publik
+CREATE TABLE certificates (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    certificate_code VARCHAR(50) UNIQUE NOT NULL, -- ID unik untuk URL /verify/[kode-unik]
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    course_id UUID NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+    issued_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (user_id, course_id)
+);
 
--- Dasbor progres siswa & laporan drop-off Admin
-CREATE INDEX idx_lesson_progress_student ON lesson_progress(student_id, status);
-CREATE INDEX idx_lesson_progress_lesson_status ON lesson_progress(lesson_id, status);
-CREATE INDEX idx_error_logs_lesson ON error_logs(lesson_id, created_at DESC);
-
-COMMIT;
+-- ============================================================================
+-- 6. INDEXES UNTUK OPTIMASI QUERY
+-- ============================================================================
+CREATE INDEX idx_courses_learning_path ON courses(learning_path_id);
+CREATE INDEX idx_enrollments_user ON enrollments(user_id);
+CREATE INDEX idx_chapters_course ON chapters(course_id, order_index);
+CREATE INDEX idx_materials_chapter ON materials(chapter_id, order_index);
+CREATE INDEX idx_quizzes_chapter ON quizzes(chapter_id, order_index);
+CREATE INDEX idx_quiz_questions_quiz ON quiz_questions(quiz_id, order_index);
+CREATE INDEX idx_quiz_submissions_user_quiz ON quiz_submissions(user_id, quiz_id);
+CREATE INDEX idx_user_progress_last_accessed ON user_material_progress(user_id, last_accessed_at DESC);
+CREATE INDEX idx_certificates_code ON certificates(certificate_code);
