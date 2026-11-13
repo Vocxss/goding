@@ -1,95 +1,161 @@
-'use client'
-import { cn } from "cn"
+"use client";
+import { cn } from "cn";
 
-import { Button } from "@/components/ui/button"
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card"
+} from "@/components/ui/card";
 import {
   Field,
   FieldDescription,
+  FieldError,
   FieldGroup,
   FieldLabel,
-} from "@/components/ui/field"
+} from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { signUpSchema } from "@/lib/validations/auth";
+import { zodResolver } from "@hookform/resolvers/zod";
+import Link from "next/link";
+import { useState } from "react";
+import { Controller, useForm } from "react-hook-form";
+import * as z from "zod";
+import { Spinner } from "./ui/spinner";
+import { toast } from "./ui/toast";
 
-import { Input } from "@/components/ui/input"
-import Image from "next/image"
-import { signIn } from "next-auth/react"
-import { Spinner } from "./ui/spinner"
+export function signUpForm({ className, ...props }) {
+  const [isLoading, setIsLoading] = useState(false);
 
-export function LoginForm({
-  className,
-  ...props
-}) {
-  const [input, setInput] = useState({
-    email: "",
-    password: "",
-  })
+  const form = useForm<z.infer<typeof signUpSchema>>({
+    resolver: zodResolver(signUpSchema),
+    defaultValues: {
+      full_name: "",
+      user_name: "",
+      email: "",
+      password: "",
+    },
+    mode: "onChange",
+  });
 
-  const [isLoading, setIsLoading] = useState(false)
+  const onSubmit = async (data: z.infer<typeof signUpSchema>) => {
+    setIsLoading(true);
 
-  const handleSubmit = async(e) => {
-    e.preventDefault()
-    setIsLoading(true)
+    const response = await fetch("/api/register", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+    const result = await response.json();
 
-    try {
-      const res = await signIn("credentials", {
-        email: input.email,
-        password: input.password
-      })
+    if (!response.ok)
+      toast.add({
+        title: "Login gagal",
+        description: result.errors,
+        type: "error",
+      });
 
-      if (!res.ok) toast.add({title: "Login gagal", description: res.message, type: "error"})
-
-      setIsLoading(false)
-    } catch (error) {
-      console.error(error)
-      toast.add({title: "Login gagal", description: error.message, type: "error"})
-      setIsLoading(false)
-    }
-  }
+    setIsLoading(false);
+  };
 
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
       <Card>
         <CardHeader className={"flex justify-center items-center"}>
-          <Image src={"/logo.webp"} width={300} height={300} className="w-48 h-48 object-cover"/>
-          <CardTitle>Selamat Datang Kembali!</CardTitle>
-          <CardDescription>
-            Masukkan akun Goding kamu
-          </CardDescription>
+          <CardTitle>Selamat Datang di Goding!</CardTitle>
+          <CardDescription>Buat akun Goding kamu untuk kursus</CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit}>
+          <form onSubmit={form.handleSubmit(onSubmit)}>
             <FieldGroup>
+              <Controller
+                name="full_name"
+                control={form.control}
+                render={({ field, fieldState }) => (
+                  <Field>
+                    <FieldLabel htmlFor="full_name">Nama Lengkap</FieldLabel>
+                    <Input
+                      {...field}
+                      id="full_name"
+                      type="text"
+                      placeholder="Gibran Rakabuming Raka"
+                      autoComplete="off"
+                      required
+                    />
+                    {fieldState.invalid && (
+                      <FieldError errors={[fieldState.error]} />
+                    )}
+                  </Field>
+                )}
+              />
+              <Controller
+                name="user_name"
+                control={form.control}
+                render={({ field, fieldState }) => (
+                  <Field>
+                    <FieldLabel htmlFor="user_name">Username</FieldLabel>
+                    <Input
+                      {...field}
+                      id="user_name"
+                      type="text"
+                      placeholder="gibrangaming"
+                      autoComplete="off"
+                      required
+                    />
+                    {fieldState.invalid && (
+                      <FieldError errors={[fieldState.error]} />
+                    )}
+                  </Field>
+                )}
+              />
+              <Controller
+                name="email"
+                control={form.control}
+                render={({ field, fieldState }) => (
+                  <Field>
+                    <FieldLabel htmlFor="email">Email</FieldLabel>
+                    <Input
+                      {...field}
+                      id="email"
+                      type="email"
+                      placeholder="gibranxgaming@gmail.com"
+                      autoComplete="off"
+                      required
+                    />
+                    {fieldState.invalid && (
+                      <FieldError errors={[fieldState.error]} />
+                    )}
+                  </Field>
+                )}
+              />
+              <Controller
+                name="password"
+                control={form.control}
+                render={({ field, fieldState }) => (
+                  <Field>
+                    <div className="flex items-center">
+                      <FieldLabel htmlFor="password">Password</FieldLabel>
+                      <Link
+                        href="/forgot-password"
+                        className="ml-auto inline-block text-sm underline-offset-4 hover:underline"
+                      >
+                        Lupa password?
+                      </Link>
+                    </div>
+                    <Input {...field} id="password" type="password" required />
+                    {fieldState.invalid && (
+                      <FieldError errors={[fieldState.error]} />
+                    )}
+                  </Field>
+                )}
+              />
               <Field>
-                <FieldLabel htmlFor="email">Email</FieldLabel>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="m@example.com"
-                  required
-                />
-              </Field>
-              <Field>
-                <div className="flex items-center">
-                  <FieldLabel htmlFor="password">Password</FieldLabel>
-                  <a
-                    href="#"
-                    className="ml-auto inline-block text-sm underline-offset-4 hover:underline"
-                  >
-                    Lupa password?
-                  </a>
-                </div>
-                <Input id="password" type="password" required />
-              </Field>
-              <Field>
-                <Button disabled={isLoading ? true : false} type="submit">{isLoading ? <Spinner/> : "Masuk"}</Button>
+                <Button disabled={isLoading ? true : false} type="submit">
+                  {isLoading ? <Spinner /> : "Masuk"}
+                </Button>
                 <FieldDescription className="text-center">
-                  Sudah punya akun? <Link href="/login">Masuk</Link>
+                  Belum punya akun? <Link href="/signup">Buat disini</Link>
                 </FieldDescription>
               </Field>
             </FieldGroup>
@@ -97,5 +163,5 @@ export function LoginForm({
         </CardContent>
       </Card>
     </div>
-  )
+  );
 }

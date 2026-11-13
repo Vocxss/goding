@@ -12,117 +12,101 @@ import {
 import {
   Field,
   FieldDescription,
+  FieldError,
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field";
-
 import { Input } from "@/components/ui/input";
-import Image from "next/image";
-import { signIn } from "next-auth/react";
-import { Spinner } from "./ui/spinner";
+import { loginSchema } from "@/lib/validations/auth";
+import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
-import { POST } from "@/app/api/[...nextauth]/route";
-import { json } from "zod";
-
+import { useState } from "react";
+import { Controller, useForm } from "react-hook-form";
+import * as z from "zod";
+import { Spinner } from "./ui/spinner";
+import { toast } from "./ui/toast";
 export function LoginForm({ className, ...props }) {
-  const [inputValue, setInputValue] = useState({
-    email: "",
-    password: "",
-  });
-
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const form = useForm<z.infer<typeof loginSchema>>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: {
+      email: "",
+      password: "",
+    },
+    mode: "onChange",
+  });
+
+  const onSubmit = async (data: z.infer<typeof loginSchema>) => {
     setIsLoading(true);
 
-    try {
-      const res = await fetch("/api/register", {
-        method: POST,
-        body: JSON.parse(inputValue),
-      });
+    const response = await fetch("/api/register", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+    const result = await response.json();
 
-      if (!res.ok)
-        toast.add({
-          title: "Login gagal",
-          description: res.message,
-          type: "error",
-        });
-
-      setIsLoading(false);
-    } catch (error) {
-      console.error(error);
+    if (!response.ok)
       toast.add({
         title: "Login gagal",
-        description: error.message,
+        description: result.errors,
         type: "error",
       });
-      setIsLoading(false);
-    }
+
+    setIsLoading(false);
   };
 
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
       <Card>
         <CardHeader className={"flex justify-center items-center"}>
-          <Image
-            src={"/logo.webp"}
-            width={300}
-            height={300}
-            className="w-48 h-48 object-cover"
-          />
           <CardTitle>Selamat Datang di Goding!</CardTitle>
           <CardDescription>Buat akun Goding kamu untuk kursus</CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit}>
+          <form onSubmit={form.handleSubmit(onSubmit)}>
             <FieldGroup>
-              <Field>
-                <FieldLabel htmlFor="email">Nama</FieldLabel>
-                <Input
-                  id="nama"
-                  type="text"
-                  placeholder="John Doe"
-                  value={inputValue.nama}
-                  onChange={(e) =>
-                    setInputValue({ ...inputValue, nama: e.target.value })
-                  }
-                  required
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="email">Email</FieldLabel>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="m@example.com"
-                  value={inputValue.email}
-                  onChange={(e) =>
-                    setInputValue({ ...inputValue, email: e.target.value })
-                  }
-                  required
-                />
-              </Field>
-              <Field>
-                <div className="flex items-center">
-                  <FieldLabel htmlFor="password">Password</FieldLabel>
-                  <Link
-                    href="/forgot-password"
-                    className="ml-auto inline-block text-sm underline-offset-4 hover:underline"
-                  >
-                    Lupa password?
-                  </Link>
-                </div>
-                <Input
-                  id="password"
-                  type="password"
-                  value={inputValue.password}
-                  onChange={(e) =>
-                    setInputValue({ ...inputValue, password: e.target.value })
-                  }
-                  required
-                />
-              </Field>
+              <Controller
+                name="email"
+                control={form.control}
+                render={({ field, fieldState }) => (
+                  <Field>
+                    <FieldLabel htmlFor="email">Nama</FieldLabel>
+                    <Input
+                      {...field}
+                      id="nama"
+                      type="text"
+                      placeholder="gibranxgaming@gmail.com"
+                      autoComplete="off"
+                      required
+                    />
+                    {fieldState.invalid && (
+                      <FieldError errors={[fieldState.error]} />
+                    )}
+                  </Field>
+                )}
+              />
+              <Controller
+                name="password"
+                control={form.control}
+                render={({ field, fieldState }) => (
+                  <Field>
+                    <div className="flex items-center">
+                      <FieldLabel htmlFor="password">Password</FieldLabel>
+                      <Link
+                        href="/forgot-password"
+                        className="ml-auto inline-block text-sm underline-offset-4 hover:underline"
+                      >
+                        Lupa password?
+                      </Link>
+                    </div>
+                    <Input {...field} id="password" type="password" required />
+                    {fieldState.invalid && (
+                      <FieldError errors={[fieldState.error]} />
+                    )}
+                  </Field>
+                )}
+              />
               <Field>
                 <Button disabled={isLoading ? true : false} type="submit">
                   {isLoading ? <Spinner /> : "Masuk"}

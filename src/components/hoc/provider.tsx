@@ -2,7 +2,7 @@
 
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SessionProvider } from "next-auth/react";
-import { Toaster } from "./ui/toast";
+import { Toaster } from "../ui/toast";
 
 export function Provider({ children }) {
   return (

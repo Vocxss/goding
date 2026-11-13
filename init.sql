@@ -11,7 +11,7 @@ CREATE TYPE quiz_type AS ENUM ('multiple_choice', 'live_coding');
 CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     full_name VARCHAR(150) NOT NULL,
-    username VARCHAR(100) NOT NULL,
+    user_name VARCHAR(100) NOT NULL,
     email VARCHAR(150) UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
     role user_role NOT NULL DEFAULT 'student',
